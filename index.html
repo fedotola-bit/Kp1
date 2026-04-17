@@ -1,0 +1,425 @@
+import React, { useState, useMemo } from 'react';
+import { LineChart, AlertTriangle, CheckCircle2, TrendingUp, ShieldAlert, CalendarClock, PieChart, ArrowRight, Calculator, CheckSquare, Square, Zap } from 'lucide-react';
+
+export default function App() {
+  // Состояние интерактивного калькулятора
+  const [revenue, setRevenue] = useState(5000000);
+  const [expenses, setExpenses] = useState(4000000);
+  const [delay, setDelay] = useState(30);
+  const [cfoEnabled, setCfoEnabled] = useState(false);
+
+  // Состояние калькулятора тарифов
+  const [selectedServices, setSelectedServices] = useState(['reporting']);
+
+  const services = [
+    { id: 'reporting', title: 'Управленческая отчетность', price: 40000, desc: 'сборка трех главных отчетов: p&l, ддс и баланс. вы всегда знаете, сколько реально заработали.' },
+    { id: 'treasury', title: 'Казначейство и контроль', price: 30000, desc: 'ежедневный контроль платежей: защита от кассовых разрывов и безопасное распределение денег.' },
+    { id: 'unit', title: 'Юнит-экономика', price: 50000, desc: 'оцифровка каждого продукта: находим убыточные направления и точки кратного роста.' },
+    { id: 'taxes', title: 'Налоговая безопасность', price: 35000, desc: 'легальная оптимизация: выбор оптимальной системы налогообложения и защита от штрафов.' },
+    { id: 'strategy', title: 'Стратегический борд', price: 45000, desc: 'ежемесячные встречи: переводим цифры на человеческий язык и помогаем принимать управленческие решения.' }
+  ];
+
+  const toggleService = (id) => {
+    setSelectedServices(prev =>
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
+  const totalPrice = services
+    .filter(s => selectedServices.includes(s.id))
+    .reduce((sum, s) => sum + s.price, 0);
+
+  const roiData = {
+    reporting: { title: 'Отчетность', roi: 'экономия 2-5% оборота', desc: 'находим "слепые зоны" в расходах. вы перестаете платить за процессы, которые не приносят компании прибыль.' },
+    treasury: { title: 'Казначейство', roi: 'до 0₽ переплат', desc: 'исключаем штрафы за просрочки и дорогие займы для покрытия внезапных кассовых разрывов.' },
+    unit: { title: 'Юнит-экономика', roi: 'рост маржи на 10-15%', desc: 'весь фокус и рекламный бюджет направляются только на прибыльные продукты, убыточные отсекаются.' },
+    taxes: { title: 'Налоги', roi: 'защита капитала', desc: 'прямое снижение налоговой нагрузки через легальные льготы и защита от миллионных штрафов.' },
+    strategy: { title: 'Стратегия', roi: 'страховка от ошибок', desc: 'принимаем решения на основе твердых цифр. один вовремя замеченный тренд окупает год нашей работы.' }
+  };
+
+  // Форматирование валюты
+  const formatMoney = (amount) => {
+    return new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+
+  // Вычисление данных для графика
+  const chartData = useMemo(() => {
+    let data = [];
+    let initialCash = cfoEnabled
+      ? revenue * (1 - (delay / 2) / 100) // Финдир снизил дебиторку
+      : revenue * (1 - delay / 100);      // Обычная ситуация
+
+    let currentBalance = initialCash;
+    let minBalance = currentBalance;
+
+    const plannedBigExpense = revenue * 0.20; // Крупный платеж (налоги, подрядчики)
+    let dailyExpense = expenses / 30;
+    let bigExpense = plannedBigExpense;
+
+    if (cfoEnabled) {
+      // это гипотеза: грамотный финдир строит кассовый план так, чтобы расходы не превышали 90% от доступных денег
+      const maxAllowedExpenses = initialCash * 0.9;
+      const requestedExpenses = expenses + plannedBigExpense;
+
+      if (requestedExpenses > maxAllowedExpenses) {
+        // переносим платежи поставщикам на следующие месяцы (режем косты пропорционально)
+        const ratio = maxAllowedExpenses / requestedExpenses;
+        dailyExpense = (expenses * ratio) / 30;
+        bigExpense = plannedBigExpense * ratio;
+      }
+    }
+
+    for (let day = 1; day <= 30; day++) {
+      currentBalance -= dailyExpense;
+      
+      // Логика без финдира: огромный разовый платеж в середине месяца
+      if (!cfoEnabled && day === 15) {
+        currentBalance -= bigExpense;
+      }
+      
+      // Логика с финдиром: платеж разбит на 4 части благодаря платежному календарю
+      if (cfoEnabled && [7, 14, 21, 28].includes(day)) {
+        currentBalance -= (bigExpense / 4);
+      }
+      
+      if (currentBalance < minBalance) {
+        minBalance = currentBalance;
+      }
+
+      data.push({
+        day,
+        balance: currentBalance
+      });
+    }
+
+    return { data, minBalance };
+  }, [revenue, expenses, delay, cfoEnabled]);
+
+  // Параметры для отрисовки кастомного SVG графика
+  const svgWidth = 800;
+  const svgHeight = 300;
+  
+  const maxVal = Math.max(...chartData.data.map(d => d.balance), revenue) * 1.1;
+  const minVal = chartData.minBalance < 0 ? chartData.minBalance * 1.1 : -maxVal * 0.1; 
+  const range = maxVal - minVal;
+
+  const getPoints = () => {
+    return chartData.data.map((d, i) => {
+      const x = (i / 29) * svgWidth;
+      const y = svgHeight - ((d.balance - minVal) / range) * svgHeight;
+      return `${x},${y}`;
+    }).join(' ');
+  };
+
+  const zeroY = svgHeight - ((0 - minVal) / range) * svgHeight;
+  const hasCashGap = chartData.minBalance < 0;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30 pb-20">
+      {/* Декоративный фон */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px]"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 rounded-full blur-[120px]"></div>
+      </div>
+
+      <div className="relative max-w-5xl mx-auto px-6 pt-16">
+        
+        {/* Хедер */}
+        <header className="mb-16 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm mb-6">
+            <LineChart className="w-4 h-4" />
+            <span>интерактивный аудит</span>
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-6 tracking-tight">
+            Финансовый МРТ вашего бизнеса
+          </h1>
+          <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+            Собственники часто узнают о проблемах слишком поздно. Смоделируйте денежные потоки вашей компании и проверьте: не грозит ли вам кассовый разрыв в ближайшие 30 дней.
+          </p>
+        </header>
+
+        {/* Главный блок - Симулятор */}
+        <main className="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl mb-12 relative overflow-hidden">
+          
+          <div className="grid lg:grid-cols-12 gap-12">
+            
+            {/* Левая колонка: Управление */}
+            <div className="lg:col-span-4 space-y-8 z-10">
+              <div>
+                <h2 className="text-2xl font-semibold text-white mb-2">Параметры</h2>
+                <p className="text-sm text-slate-400">введите примерные цифры за месяц</p>
+              </div>
+
+              <div className="space-y-6">
+                {/* Выручка */}
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <label className="text-sm font-medium text-slate-300">Выручка</label>
+                    <span className="text-sm font-bold text-white">{formatMoney(revenue)}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="1000000" max="20000000" step="500000"
+                    value={revenue}
+                    onChange={(e) => setRevenue(Number(e.target.value))}
+                    className="w-full accent-blue-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+
+                {/* Расходы */}
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <label className="text-sm font-medium text-slate-300">Пост. расходы</label>
+                    <span className="text-sm font-bold text-white">{formatMoney(expenses)}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="500000" max="15000000" step="100000"
+                    value={expenses}
+                    onChange={(e) => setExpenses(Number(e.target.value))}
+                    className="w-full accent-blue-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+
+                {/* Дебиторка */}
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <label className="text-sm font-medium text-slate-300">Задержка оплат (дебиторка)</label>
+                    <span className="text-sm font-bold text-white">{delay}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" max="80" step="5"
+                    value={delay}
+                    onChange={(e) => setDelay(Number(e.target.value))}
+                    className="w-full accent-blue-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <p className="text-xs text-slate-500 mt-2">доля денег, зависающих у клиентов</p>
+                </div>
+              </div>
+
+              {/* Магическая кнопка */}
+              <div className={`p-5 rounded-2xl border transition-all duration-500 ${cfoEnabled ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900 border-slate-700'}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-semibold text-white">Решение финдира</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer"
+                      checked={cfoEnabled}
+                      onChange={() => setCfoEnabled(!cfoEnabled)}
+                    />
+                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
+                </div>
+                <p className="text-xs text-slate-400">
+                  {cfoEnabled 
+                    ? "включено: внедрен платежный календарь, регламент по дебиторке и фондирование."
+                    : "выключено: управление идет интуитивно, платежи хаотичны."}
+                </p>
+              </div>
+
+            </div>
+
+            {/* Правая колонка: График и выводы */}
+            <div className="lg:col-span-8 flex flex-col z-10">
+              
+              {/* Статус бар */}
+              <div className={`flex items-start gap-4 p-4 rounded-xl border mb-6 transition-colors duration-300 ${!cfoEnabled && hasCashGap ? 'bg-red-500/10 border-red-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+                {!cfoEnabled && hasCashGap ? (
+                  <>
+                    <ShieldAlert className="w-6 h-6 text-red-400 flex-shrink-0 mt-1" />
+                    <div>
+                      <h3 className="text-red-400 font-bold mb-1">Угроза кассового разрыва</h3>
+                      <p className="text-sm text-red-200/70">
+                        внимание: при таких показателях на 15-й день компании нечем будет платить по счетам. 
+                        максимальный дефицит составит <span className="font-bold text-red-300">{formatMoney(chartData.minBalance)}</span>.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400 flex-shrink-0 mt-1" />
+                    <div>
+                      <h3 className="text-emerald-400 font-bold mb-1">Безопасная зона</h3>
+                      <p className="text-sm text-emerald-200/70">
+                        ситуация стабильна: грамотное распределение платежей и работа с дебиторкой удерживают компанию от падения в минус. вы сохранили нервы и репутацию.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* График */}
+              <div className="flex-1 bg-slate-900/50 rounded-xl border border-slate-800 p-4 relative h-[300px]">
+                <div className="absolute top-4 left-4 text-xs text-slate-500 font-medium tracking-widest uppercase">Баланс счета (30 дней)</div>
+                
+                <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full overflow-visible mt-6">
+                  {/* Линия нуля */}
+                  <line 
+                    x1="0" y1={zeroY} x2={svgWidth} y2={zeroY} 
+                    stroke="#475569" strokeWidth="1" strokeDasharray="5,5" 
+                  />
+                  <text x={svgWidth - 40} y={zeroY - 5} fill="#475569" fontSize="12">0 ₽</text>
+
+                  {/* Зона кассового разрыва (красная заливка внизу) */}
+                  <rect 
+                    x="0" y={zeroY} width={svgWidth} height={svgHeight - zeroY} 
+                    fill="rgba(239, 68, 68, 0.05)" 
+                  />
+
+                  {/* Линия баланса */}
+                  <polyline
+                    fill="none"
+                    stroke={!cfoEnabled && hasCashGap ? "#ef4444" : "#10b981"}
+                    strokeWidth="3"
+                    points={getPoints()}
+                    className="transition-all duration-700 ease-in-out"
+                  />
+                  
+                  {/* Градиент под линией */}
+                  <polygon
+                    fill={`url(#gradient-${cfoEnabled ? 'green' : 'red'})`}
+                    points={`0,${zeroY} ${getPoints()} ${svgWidth},${zeroY}`}
+                    className="transition-all duration-700 ease-in-out opacity-20"
+                  />
+
+                  <defs>
+                    <linearGradient id="gradient-red" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor="#ef4444" />
+                      <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
+                    </linearGradient>
+                    <linearGradient id="gradient-green" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+
+            </div>
+          </div>
+        </main>
+
+        {/* Блок преимуществ */}
+        <div className="grid md:grid-cols-3 gap-6 mb-16">
+          <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl hover:border-slate-700 transition-colors">
+            <CalendarClock className="w-8 h-8 text-blue-400 mb-4" />
+            <h4 className="text-lg font-bold text-white mb-2">Платежный календарь</h4>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              исключаем сюрпризы: мы знаем, кому и сколько нужно платить за месяц вперед. разносим крупные платежи, чтобы избежать просадок.
+            </p>
+          </div>
+          <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl hover:border-slate-700 transition-colors">
+            <TrendingUp className="w-8 h-8 text-purple-400 mb-4" />
+            <h4 className="text-lg font-bold text-white mb-2">Работа с дебиторкой</h4>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              деньги не должны лежать у клиентов: внедряем жесткие регламенты сбора долгов, факторинг и систему мотивации менеджеров.
+            </p>
+          </div>
+          <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl hover:border-slate-700 transition-colors">
+            <PieChart className="w-8 h-8 text-emerald-400 mb-4" />
+            <h4 className="text-lg font-bold text-white mb-2">Фондирование</h4>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              создаем подушку безопасности: автоматически откладываем процент от выручки на резервный счет для спокойного прохождения кризисов.
+            </p>
+          </div>
+        </div>
+
+        {/* CTA Блок */}
+        <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 border border-blue-500/20 rounded-3xl p-10 text-center relative overflow-hidden mb-16">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
+          <h2 className="text-3xl font-bold text-white mb-4">Готовы оцифровать свой бизнес?</h2>
+          <p className="text-slate-300 max-w-2xl mx-auto mb-8">
+            оставьте заявку на бесплатный финансовый аудит. за 45 минут мы разберем вашу бизнес-модель, найдем замороженные деньги и составим дорожную карту внедрения управленческого учета.
+          </p>
+          <button className="inline-flex items-center gap-2 bg-white text-slate-900 font-bold px-8 py-4 rounded-xl hover:bg-slate-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+            Забронировать аудит
+            <ArrowRight className="w-5 h-5" />
+          </button>
+          <p className="text-xs text-slate-500 mt-4">без обязательств к покупке - вы получите реальный план действий.</p>
+        </div>
+
+        {/* Конструктор тарифа */}
+        <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 mb-12 relative overflow-hidden">
+          <div className="flex items-center gap-3 mb-8 relative z-10">
+            <Calculator className="w-6 h-6 text-blue-400" />
+            <h2 className="text-2xl font-bold text-white">Конструктор стоимости аутсорса</h2>
+          </div>
+          <p className="text-slate-400 mb-8 relative z-10">
+            это гипотеза: прозрачное ценообразование повышает доверие. выберите только те блоки, которые нужны вашему бизнесу прямо сейчас.
+          </p>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 relative z-10">
+            {services.map((service) => {
+              const isSelected = selectedServices.includes(service.id);
+              return (
+                <div 
+                  key={service.id}
+                  onClick={() => toggleService(service.id)}
+                  className={`p-5 rounded-2xl border cursor-pointer transition-all duration-300 flex flex-col h-full ${isSelected ? 'bg-blue-500/10 border-blue-500/30' : 'bg-slate-900/50 border-slate-800 hover:border-slate-700'}`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="font-semibold text-white pr-4">{service.title}</div>
+                    {isSelected ? (
+                      <CheckSquare className="w-5 h-5 text-blue-400 flex-shrink-0" />
+                    ) : (
+                      <Square className="w-5 h-5 text-slate-600 flex-shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed flex-grow mb-4">
+                    {service.desc}
+                  </p>
+                  <div className="text-sm font-bold text-blue-300 mt-auto">
+                    + {formatMoney(service.price)} / мес
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col md:flex-row items-center justify-between bg-slate-950/80 rounded-2xl p-6 border border-slate-800 relative z-10">
+            <div className="mb-4 md:mb-0 text-center md:text-left">
+              <div className="text-slate-400 text-sm mb-1">Ориентировочная стоимость:</div>
+              <div className="text-3xl font-bold text-white">{formatMoney(totalPrice)} <span className="text-lg text-slate-500 font-normal">/ мес</span></div>
+            </div>
+            <button className="w-full md:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-colors">
+              Обсудить этот тариф
+            </button>
+          </div>
+        </div>
+
+        {/* Блок окупаемости (ROI) */}
+        {selectedServices.length > 0 && (
+          <div className="bg-emerald-900/10 border border-emerald-500/20 rounded-3xl p-8 mb-12 relative overflow-hidden">
+            <div className="flex items-center gap-3 mb-6 relative z-10">
+              <Zap className="w-6 h-6 text-emerald-400" />
+              <h2 className="text-2xl font-bold text-white">Как окупаются эти инвестиции</h2>
+            </div>
+            <p className="text-slate-400 mb-8 relative z-10">
+              это моя интерпретация, а не факт: качественный финансовый учет - это не статья расходов, а инвестиция. вот как каждый выбранный вами блок генерирует дополнительную прибыль или защищает от потерь:
+            </p>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+              {selectedServices.map((id) => {
+                const data = roiData[id];
+                return (
+                  <div key={id} className="bg-slate-900/40 border border-emerald-500/10 p-5 rounded-2xl transition-all duration-300">
+                    <div className="text-emerald-400 font-bold text-lg mb-1">{data.roi}</div>
+                    <div className="text-white font-semibold text-sm mb-2">{data.title}</div>
+                    <p className="text-slate-400 text-xs leading-relaxed">{data.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
